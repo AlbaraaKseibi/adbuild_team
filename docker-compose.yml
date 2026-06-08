@@ -1,0 +1,152 @@
+# Showroom Omnichannel Sales System — full stack.
+#
+# Base stack:    postgres + redis + chatwoot (web) + chatwoot-sidekiq + caddy
+# Custom stack:  ai-kb-service + followup-scheduler
+#
+# First boot:
+#   docker compose run --rm chatwoot bundle exec rails db:chatwoot_prepare
+#   docker compose up -d
+#
+# NOTE: We start from the official chatwoot image to get a running base quickly.
+# Once the Chatwoot fork (with our patches) exists under ./chatwoot, switch the
+# chatwoot/chatwoot-sidekiq services to `build: ./chatwoot` and rebuild.
+
+x-chatwoot-env: &chatwoot-env
+  SECRET_KEY_BASE: ${SECRET_KEY_BASE}
+  RAILS_ENV: ${RAILS_ENV:-production}
+  NODE_ENV: ${NODE_ENV:-production}
+  FRONTEND_URL: ${FRONTEND_URL}
+  DEFAULT_LOCALE: ${DEFAULT_LOCALE:-ar}
+  POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
+  POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+  POSTGRES_USERNAME: ${POSTGRES_USER:-postgres}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  POSTGRES_DATABASE: ${POSTGRES_DB:-chatwoot}
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+  MAILER_SENDER_EMAIL: ${MAILER_SENDER_EMAIL}
+  SMTP_ADDRESS: ${SMTP_ADDRESS}
+  SMTP_PORT: ${SMTP_PORT}
+  SMTP_USERNAME: ${SMTP_USERNAME}
+  SMTP_PASSWORD: ${SMTP_PASSWORD}
+  RAILS_LOG_TO_STDOUT: "true"
+
+services:
+  postgres:
+    # pgvector image = Postgres 16 + the `vector` extension (used by ai-kb-service RAG).
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-chatwoot}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # Creates the second database (marketing_ai) for the AI service on first boot.
+      - ./infra/postgres/init-ai-db.sh:/docker-entrypoint-initdb.d/init-ai-db.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+
+  chatwoot:
+    image: chatwoot/chatwoot:v4.0.0 # pin a specific release; switch to build: ./chatwoot for the fork
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      <<: *chatwoot-env
+    entrypoint: docker/entrypoints/rails.sh
+    command: ["bundle", "exec", "rails", "s", "-p", "3000", "-b", "0.0.0.0"]
+    expose:
+      - "3000"
+    volumes:
+      - chatwoot-storage:/app/storage
+
+  chatwoot-sidekiq:
+    image: chatwoot/chatwoot:v4.0.0
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      <<: *chatwoot-env
+    command: ["bundle", "exec", "sidekiq", "-C", "config/sidekiq.yml"]
+    volumes:
+      - chatwoot-storage:/app/storage
+
+  ai-kb-service:
+    build: ./services/ai-kb-service
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      AI_KB_PORT: ${AI_KB_PORT:-4000}
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/${AI_KB_DB:-marketing_ai}
+      CHATWOOT_BASE_URL: ${CHATWOOT_BASE_URL:-http://chatwoot:3000}
+      CHATWOOT_API_ACCESS_TOKEN: ${CHATWOOT_API_ACCESS_TOKEN}
+      CHATWOOT_ACCOUNT_ID: ${CHATWOOT_ACCOUNT_ID:-1}
+      CHATWOOT_WEBHOOK_SECRET: ${CHATWOOT_WEBHOOK_SECRET}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      CLAUDE_DRAFT_MODEL: ${CLAUDE_DRAFT_MODEL:-claude-sonnet-4-6}
+      EMBEDDINGS_PROVIDER: ${EMBEDDINGS_PROVIDER:-voyage}
+      VOYAGE_API_KEY: ${VOYAGE_API_KEY}
+      VOYAGE_MODEL: ${VOYAGE_MODEL:-voyage-3}
+      VOYAGE_DIMENSIONS: ${VOYAGE_DIMENSIONS:-1024}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_EMBEDDINGS_MODEL: ${OPENAI_EMBEDDINGS_MODEL:-text-embedding-3-large}
+      AI_KB_ADMIN_TOKEN: ${AI_KB_ADMIN_TOKEN}
+    expose:
+      - "4000"
+
+  followup-scheduler:
+    build: ./services/followup-scheduler
+    restart: unless-stopped
+    depends_on:
+      - chatwoot
+    environment:
+      NODE_ENV: production
+      CHATWOOT_BASE_URL: ${CHATWOOT_BASE_URL:-http://chatwoot:3000}
+      CHATWOOT_API_ACCESS_TOKEN: ${CHATWOOT_API_ACCESS_TOKEN}
+      CHATWOOT_ACCOUNT_ID: ${CHATWOOT_ACCOUNT_ID:-1}
+      FOLLOWUP_IDLE_HOURS: ${FOLLOWUP_IDLE_HOURS:-24}
+      FOLLOWUP_CRON: ${FOLLOWUP_CRON:-*/30 * * * *}
+      FOLLOWUP_STATUSES: ${FOLLOWUP_STATUSES:-open,pending}
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - chatwoot
+      - ai-kb-service
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      PUBLIC_HOSTNAME: ${PUBLIC_HOSTNAME}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  postgres-data:
+  redis-data:
+  chatwoot-storage:
+  caddy-data:
+  caddy-config:

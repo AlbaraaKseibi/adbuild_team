@@ -1,0 +1,28 @@
+# Caddy reverse proxy with automatic HTTPS (Let's Encrypt).
+# Meta webhooks require a publicly reachable HTTPS endpoint.
+#
+# Routes:
+#   /                       -> Chatwoot (agent dashboard, channel webhooks, API)
+#   /ai/*                   -> ai-kb-service (Copilot sidebar, product admin, draft webhook)
+#
+# Chatwoot itself receives the Meta channel webhooks at its own routes
+# (e.g. /webhooks/whatsapp/<phone>, /webhooks/instagram, /bot ...), so we send
+# everything that is not /ai/* to Chatwoot.
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$PUBLIC_HOSTNAME} {
+	encode zstd gzip
+
+	# Our AI/KB service (sidebar UI + product admin + Chatwoot-agent-bot webhook).
+	handle_path /ai/* {
+		reverse_proxy ai-kb-service:4000
+	}
+
+	# Everything else is Chatwoot.
+	handle {
+		reverse_proxy chatwoot:3000
+	}
+}

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Showroom Copilot</title>
+    <style>
+      :root { font-family: system-ui, "Segoe UI", Tahoma, sans-serif; font-size: 14px; }
+      body { margin: 0; padding: 12px; color: #1f2937; background: #fff; }
+      h2 { font-size: 14px; margin: 0 0 8px; color: #374151; }
+      .row { display: flex; gap: 8px; margin-bottom: 10px; }
+      button { cursor: pointer; border: 1px solid #d1d5db; background: #f9fafb; border-radius: 8px;
+               padding: 8px 10px; font-size: 13px; }
+      button.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
+      input[type="text"] { flex: 1; padding: 8px; border: 1px solid #d1d5db; border-radius: 8px; }
+      .box { border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px; margin-bottom: 10px;
+             white-space: pre-wrap; min-height: 40px; background: #fafafa; }
+      .product { border-bottom: 1px solid #eee; padding: 6px 0; }
+      .product b { display: block; }
+      .muted { color: #6b7280; font-size: 12px; }
+      [dir="rtl"] { text-align: right; }
+    </style>
+  </head>
+  <body>
+    <h2>🤖 Copilot</h2>
+
+    <div class="row">
+      <button id="draftBtn" class="primary">Draft reply / اقترح رد</button>
+    </div>
+    <div id="draft" class="box muted">Press "Draft reply" to get an AI suggestion grounded in the product catalog.</div>
+    <div class="row">
+      <button id="copyBtn">Copy / نسخ</button>
+    </div>
+
+    <h2>🔎 Product lookup / بحث المنتجات</h2>
+    <div class="row">
+      <input id="q" type="text" placeholder="Search products… / ابحث عن منتج" />
+      <button id="searchBtn">Go</button>
+    </div>
+    <div id="results"></div>
+
+    <script>
+      // Chatwoot Dashboard App protocol: the parent posts the conversation context.
+      let conversationId = null;
+      let section = null;
+
+      window.addEventListener('message', (e) => {
+        try {
+          const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+          if (data && data.event === 'appContext' && data.data && data.data.conversation) {
+            conversationId = data.data.conversation.id;
+            // Section comes from the assigned team if present.
+            section = data.data.conversation.meta?.team?.name || null;
+            const dir = (document.documentElement.lang || '').startsWith('ar') ? 'rtl' : 'ltr';
+            document.body.setAttribute('dir', dir);
+          }
+        } catch (_) { /* ignore non-JSON messages */ }
+      });
+
+      const draftEl = document.getElementById('draft');
+
+      document.getElementById('draftBtn').onclick = async () => {
+        if (!conversationId) { draftEl.textContent = 'No conversation selected.'; return; }
+        draftEl.textContent = 'Thinking… / جارٍ التفكير';
+        try {
+          const res = await fetch('copilot/draft', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ conversation_id: conversationId, section }),
+          });
+          const json = await res.json();
+          draftEl.textContent = json.draft || 'No draft produced.';
+          draftEl.classList.remove('muted');
+        } catch (err) {
+          draftEl.textContent = 'Error: ' + err;
+        }
+      };
+
+      document.getElementById('copyBtn').onclick = async () => {
+        await navigator.clipboard.writeText(draftEl.textContent || '');
+      };
+
+      document.getElementById('searchBtn').onclick = async () => {
+        const q = document.getElementById('q').value.trim();
+        const out = document.getElementById('results');
+        if (!q) { out.innerHTML = ''; return; }
+        out.innerHTML = '<span class="muted">Searching…</span>';
+        const url = 'copilot/products?q=' + encodeURIComponent(q) + (section ? '&section=' + encodeURIComponent(section) : '');
+        const json = await (await fetch(url)).json();
+        out.innerHTML = (json.products || [])
+          .map((p) => `<div class="product"><b>${p.name}</b>
+            <span class="muted">${p.section} · ${p.price ? p.price + ' ' + (p.currency||'') : 'price on request'} · ${p.in_stock ? 'in stock' : 'out of stock'}</span>
+            <div>${p.description || ''}</div></div>`)
+          .join('') || '<span class="muted">No matches.</span>';
+      };
+    </script>
+  </body>
+</html>
