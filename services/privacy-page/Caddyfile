@@ -1,0 +1,12 @@
+# Railway terminates TLS at its edge, so we just serve plain HTTP on $PORT.
+{
+    auto_https off
+    admin off
+}
+
+:{$PORT} {
+    root * /srv
+    encode gzip zstd
+    file_server
+    # Always serve index.html when /  is requested (handled by file_server).
+}
