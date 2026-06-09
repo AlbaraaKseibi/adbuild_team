@@ -4,6 +4,8 @@ import { z } from 'zod';
 const schema = z.object({
   NODE_ENV: z.string().default('development'),
   AI_KB_PORT: z.coerce.number().default(4000),
+  // Railway (and most PaaS) inject PORT at runtime; honour it if present.
+  PORT: z.coerce.number().optional(),
 
   DATABASE_URL: z.string().url(),
 
@@ -37,6 +39,9 @@ if (!parsed.success) {
 }
 
 export const config = parsed.data;
+
+// Resolved HTTP port: prefer the PaaS-injected PORT, fall back to AI_KB_PORT.
+export const httpPort: number = parsed.data.PORT ?? parsed.data.AI_KB_PORT;
 
 // Embedding vector dimension used for the pgvector column. OpenAI text-embedding-3-large
 // is 3072; voyage-3 defaults to 1024. Keep the DB column in sync with the active provider.

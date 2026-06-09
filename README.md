@@ -44,22 +44,25 @@ automation) and build only the showroom-specific parts ourselves:
 **[NEXT-STEPS.md](NEXT-STEPS.md)** is the exact, ordered, copy-paste runbook to take this
 from scaffold to a live system. Follow it top to bottom. The overview below is just context.
 
-## Getting started (high level)
+## Deploy target
 
-1. **Read the plan** and `docs/meta-setup.md`.
-2. `cp .env.example .env` and fill in secrets (Chatwoot, Anthropic, embeddings).
-3. Bring up the base stack: `docker compose up -d postgres redis chatwoot chatwoot-sidekiq caddy`.
-4. Finish Meta onboarding and add the WhatsApp / Instagram / Facebook inboxes in the
-   Chatwoot UI (`docs/meta-setup.md`).
-5. Create **Teams** (one per section), users, labels, and automation rules
-   (`docs/chatwoot-customizations.md`, "Native configuration").
-6. Bring up the custom services: `docker compose up -d ai-kb-service followup-scheduler`.
-7. Apply the Chatwoot fork patches for section isolation + referral capture
-   (`docs/chatwoot-customizations.md`) and rebuild the `chatwoot` image.
+**Production: [Railway](https://railway.app)**. The step-by-step runbook is
+[NEXT-STEPS.md](NEXT-STEPS.md).
 
-> **Status:** Phase 0 scaffolding. The Chatwoot fork + patches and live Meta credentials
-> are the next steps (they require Docker, a domain with TLS, and a verified Meta Business
-> account).
+**Local dev: Docker Compose** — the included [docker-compose.yml](docker-compose.yml) +
+[Caddyfile](Caddyfile) bring the whole stack up on your laptop for testing.
+
+## Current scope: basics first
+
+The first phase ships **just Chatwoot + Meta channels + native config** on Railway (4
+services, zero custom code, zero patches). Manager triages every incoming conversation and
+assigns it to an employee; each employee sees only their own assignments using Chatwoot's
+"Conversations assigned to me only" access level. See [NEXT-STEPS.md](NEXT-STEPS.md).
+
+The four upgrades — section-shared visibility (patch B1), ad → section auto-routing
+(patch B2), Claude AI drafts + product KB ([services/ai-kb-service/](services/ai-kb-service/)),
+auto follow-ups ([services/followup-scheduler/](services/followup-scheduler/)) — are
+**already scaffolded** in this repo and can be turned on one at a time when ready.
 
 ## Key constraints (do not forget)
 

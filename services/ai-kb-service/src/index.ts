@@ -3,7 +3,7 @@ import cors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { config } from './config.js';
+import { httpPort } from './config.js';
 import { healthRoutes } from './routes/health.js';
 import { webhookRoutes } from './routes/webhook.js';
 import { productRoutes } from './routes/products.js';
@@ -26,8 +26,8 @@ await app.register(copilotRoutes);
 await app.register(adRoutingRoutes);
 
 try {
-  await app.listen({ port: config.AI_KB_PORT, host: '0.0.0.0' });
-  app.log.info(`ai-kb-service listening on :${config.AI_KB_PORT}`);
+  await app.listen({ port: httpPort, host: '0.0.0.0' });
+  app.log.info(`ai-kb-service listening on :${httpPort}`);
 } catch (err) {
   app.log.error(err);
   process.exit(1);

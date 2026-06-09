@@ -1,289 +1,278 @@
-# What to do now — step by step
+# What to do now — step by step (Basics, on Railway)
 
-This is the exact order to take the project from "scaffolded on your laptop" to "live
-system answering real customers." Do the steps top to bottom. Each step says **what to do**
-and **how you know it worked (✅)**.
+This is the **basics-only** path to a working system: Chatwoot deployed on Railway, all
+three Meta channels connected, sections + employees set up, manager triages messages, each
+employee sees only the conversations assigned to them. **No custom code, no patches, no AI
+in this phase.** You can be answering real customers in a day or two of clock time.
 
-> **Where things run:** Chatwoot + our services run in **Docker** on a **Linux server with a
-> public domain** (Meta requires a public HTTPS address for webhooks). Your Windows PC is
-> only used to edit files and run commands over SSH. A cheap cloud VPS is enough.
+> **What basics gives you (and what it doesn't):**
+> ✅ All WhatsApp + IG + FB messages in one inbox.
+> ✅ Manager assigns each conversation to a specific employee (in their section).
+> ✅ Each employee sees only their own assigned conversations.
+> ✅ Conversation status, sales pipeline stage, customer history, canned replies, auto-reply
+>    greeting, per-employee + per-section + showroom reports.
+> ❌ Employees can't see their teammates' conversations in the same section (needs patch B1).
+> ❌ Ad messages don't auto-route to a section — manager assigns them manually (needs patch B2).
+> ❌ No AI-suggested drafts, no product knowledge base, no auto follow-ups.
+> Those land in the **"Upgrades" section at the bottom**, when you're ready.
 
-> **Time note:** Step 1.2 (Meta Business Verification) can take **1–3 days** to be approved.
-> **Start it first**, then do everything else while you wait.
+> **Time note:** Step 1.2 (Meta Business Verification) can take **1–3 days**. **Start it
+> first**, then do everything else while you wait.
 
 ---
 
-## Phase 1 — Accounts & things to gather (start today, no server needed)
+## Phase 1 — Accounts & secrets (start today)
 
-- [ ] **1.1 Buy a domain** (or use a subdomain you own), e.g. `chat.yourshowroom.com`.
+- [ ] **1.1 Sign up for [Railway](https://railway.app)** and add a payment method
+  (~$5–20/month for the Chatwoot stack).
 - [ ] **1.2 Meta Business setup** — start this first, it takes the longest:
-  - Create/confirm a **Meta Business Manager** account and complete **Business
-    Verification** (Business Settings → Security Center).
-  - Create a **Meta App** of type **Business** at <https://developers.facebook.com/>.
-  - Add the **WhatsApp**, **Messenger**, and **Instagram** products to the app.
-  - Make sure you have a **Facebook Page** for the showroom and an **Instagram
-    Professional** account **linked to that Page**.
+  - **Meta Business Manager** account with **Business Verification** submitted.
+  - A **Meta App** of type **Business** at <https://developers.facebook.com/>, with
+    **WhatsApp**, **Messenger**, and **Instagram** products added.
+  - A **Facebook Page** for the showroom; an **Instagram Professional** account linked to it.
   - Decide **which WhatsApp number** you'll move to the Cloud API. ⚠️ Once moved it leaves
     the WhatsApp Business *phone app*.
-- [ ] **1.3 Get API keys:**
-  - **Anthropic (Claude):** <https://console.anthropic.com/> → API key (`sk-ant-...`).
-  - **Voyage AI (embeddings, multilingual):** <https://www.voyageai.com/> → API key
-    (`pa-...`). *(Optional: use OpenAI embeddings instead — see `.env`.)*
+- [ ] **1.3 Create a GitHub account** if you don't have one.
 
-**Collect these values in one place — you'll paste them into `.env` in Phase 3:**
-
-```
-DOMAIN              = chat.yourshowroom.com
-ACME_EMAIL          = you@yourshowroom.com
-ANTHROPIC_API_KEY   = sk-ant-...
-VOYAGE_API_KEY      = pa-...
-WhatsApp Phone Number ID, WABA ID, System User token   (from Phase 4)
-Facebook Page Access Token                              (from Phase 4)
+**Pre-generate two secrets** (PowerShell):
+```powershell
+# 128-hex SECRET_KEY_BASE for Chatwoot:
+-join ((1..128) | ForEach-Object { '{0:x}' -f (Get-Random -Max 16) })
+# Long random Postgres password (only if you want to override the managed one):
+-join ((1..32) | ForEach-Object { '{0:x}' -f (Get-Random -Max 16) })
 ```
 
-✅ **Done when:** Meta Business Verification is *submitted* (approval can come later) and you
-have your domain + Claude + Voyage keys.
+✅ **Done when:** Meta Business Verification is *submitted* and you've saved the
+`SECRET_KEY_BASE` somewhere safe.
 
 ---
 
-## Phase 2 — Provision the server
+## Phase 2 — Push the project to GitHub
 
-- [ ] **2.1 Create a VPS** (e.g. Hetzner, DigitalOcean, AWS Lightsail):
-  - **Ubuntu 22.04 / 24.04**, **4 GB RAM minimum** (8 GB comfortable), 2 vCPU, 40 GB disk.
-- [ ] **2.2 Point your domain at it:** add a DNS **A record** for `chat.yourshowroom.com` →
-  the server's public IP. Wait for it to resolve (`ping chat.yourshowroom.com`).
-- [ ] **2.3 Open firewall ports 80 and 443** (and 22 for SSH) on the VPS.
-- [ ] **2.4 SSH into the server** and install Docker:
-  ```bash
-  ssh root@YOUR_SERVER_IP
-  curl -fsSL https://get.docker.com | sh
-  docker --version && docker compose version   # confirm both work
-  ```
+In PowerShell, inside `d:\marketing-system`:
 
-✅ **Done when:** `docker compose version` prints a version, and your domain resolves to the
-server IP.
+```powershell
+git init
+git add .
+git commit -m "Initial scaffold"
+```
 
----
+Create an **empty private repo** on GitHub called `marketing-system`, then:
 
-## Phase 3 — Get the project onto the server & configure it
+```powershell
+git remote add origin https://github.com/YOUR_GITHUB_USERNAME/marketing-system.git
+git branch -M main
+git push -u origin main
+```
 
-- [ ] **3.1 Copy this project to the server.** Easiest is git. From your Windows PC inside
-  `d:\marketing-system` (in PowerShell):
-  ```powershell
-  git init
-  git add .
-  git commit -m "Initial scaffold"
-  # create an empty private repo on GitHub, then:
-  git remote add origin https://github.com/YOURNAME/marketing-system.git
-  git push -u origin main
-  ```
-  Then on the server:
-  ```bash
-  apt-get install -y git
-  git clone https://github.com/YOURNAME/marketing-system.git
-  cd marketing-system
-  ```
-  *(No GitHub? Use `scp -r d:\marketing-system root@SERVER_IP:/root/` from PowerShell.)*
+(You won't actually deploy any of the code from this repo in the basics phase — we're using
+Chatwoot's prebuilt image. The repo is here so the upgrades later are a one-click switch.)
 
-- [ ] **3.2 Create your `.env`:**
-  ```bash
-  cp .env.example .env
-  ```
-- [ ] **3.3 Generate the two strong secrets** and note them:
-  ```bash
-  openssl rand -hex 64    # -> paste as SECRET_KEY_BASE
-  openssl rand -hex 24    # -> use for POSTGRES_PASSWORD / tokens
-  ```
-- [ ] **3.4 Edit `.env`** (`nano .env`) and fill in **at least** these:
-  ```
-  PUBLIC_HOSTNAME=chat.yourshowroom.com
-  FRONTEND_URL=https://chat.yourshowroom.com
-  ACME_EMAIL=you@yourshowroom.com
-  POSTGRES_PASSWORD=<the rand-hex-24 value>
-  SECRET_KEY_BASE=<the rand-hex-64 value>
-  CHATWOOT_WEBHOOK_SECRET=<another rand-hex-24>
-  AI_KB_ADMIN_TOKEN=<another rand-hex-24>
-  ANTHROPIC_API_KEY=sk-ant-...
-  VOYAGE_API_KEY=pa-...
-  ```
-  Leave `CHATWOOT_API_ACCESS_TOKEN=paste-after-first-boot` for now — you'll set it in Phase 6.
-
-✅ **Done when:** `.env` exists on the server with the secrets above filled in.
+✅ **Done when:** the code is visible at `https://github.com/YOUR_GITHUB_USERNAME/marketing-system`.
 
 ---
 
-## Phase 4 — Boot the base stack (Chatwoot)
+## Phase 3 — Create the Railway project & 4 services
 
-- [ ] **4.1 Start the database and cache:**
-  ```bash
-  docker compose up -d postgres redis
-  ```
-- [ ] **4.2 Prepare the Chatwoot database (first run only):**
-  ```bash
-  docker compose run --rm chatwoot bundle exec rails db:chatwoot_prepare
-  ```
-- [ ] **4.3 Start Chatwoot + the reverse proxy:**
-  ```bash
-  docker compose up -d chatwoot chatwoot-sidekiq caddy
-  docker compose logs -f caddy      # watch it obtain the TLS certificate, then Ctrl+C
-  ```
-- [ ] **4.4 Open `https://chat.yourshowroom.com`** in a browser → create the **admin
-  account** (this first user is your manager/admin).
+In Railway, **New Project → Empty Project**. Inside that one project, add the services
+**in this order**. Wait for each to finish deploying before moving on.
 
-✅ **Done when:** the Chatwoot login page loads over **HTTPS** (padlock) and you can log in.
+### 3.1  Postgres (managed)
+- **+ New → Database → Add PostgreSQL**.
+- Railway exposes a `DATABASE_URL` and `PG*` variables you'll reference below.
+
+### 3.2  Redis (managed)
+- **+ New → Database → Add Redis**.
+
+### 3.3  Chatwoot Web
+- **+ New → Empty Service** → **Settings → Source → Image** = `chatwoot/chatwoot:v4.0.0`.
+- **Settings → Deploy → Start Command** (overrides the image CMD):
+  ```
+  bundle exec rails db:chatwoot_prepare && bundle exec rails s -p $PORT -b 0.0.0.0
+  ```
+- **Settings → Networking → Generate Domain** (gives you `https://chatwoot-production-xxxx.up.railway.app`).
+- **Variables** (use the **Reference** picker for the `${{...}}` ones — don't paste raw URLs):
+  ```
+  SECRET_KEY_BASE     = <your 128-hex value>
+  RAILS_ENV           = production
+  NODE_ENV            = production
+  RAILS_LOG_TO_STDOUT = true
+  DEFAULT_LOCALE      = ar
+  FRONTEND_URL        = https://<paste this service's generated domain>
+  POSTGRES_HOST       = ${{Postgres.PGHOST}}
+  POSTGRES_PORT       = ${{Postgres.PGPORT}}
+  POSTGRES_USERNAME   = ${{Postgres.PGUSER}}
+  POSTGRES_PASSWORD   = ${{Postgres.PGPASSWORD}}
+  POSTGRES_DATABASE   = ${{Postgres.PGDATABASE}}
+  REDIS_URL           = ${{Redis.REDIS_URL}}
+  # Optional SMTP (for agent invites / password resets):
+  MAILER_SENDER_EMAIL = showroom <noreply@example.com>
+  SMTP_ADDRESS        =
+  SMTP_PORT           = 587
+  SMTP_USERNAME       =
+  SMTP_PASSWORD       =
+  ```
+- Rename the service `chatwoot-web`.
+- ✅ **It worked when:** deploy logs end with `Listening on http://0.0.0.0:PORT`, and the
+  generated HTTPS domain shows the Chatwoot "Create new account" page.
+
+### 3.4  Chatwoot Sidekiq (background jobs)
+- **+ New → Empty Service** → **Image** = `chatwoot/chatwoot:v4.0.0`.
+- **Start Command**: `bundle exec sidekiq -C config/sidekiq.yml`
+- **No public domain** (workers don't need one).
+- **Variables**: same block as `chatwoot-web` (right-click `chatwoot-web` → Copy
+  Variables). You can omit `FRONTEND_URL` — not needed for Sidekiq.
+- Rename `chatwoot-sidekiq`.
+- ✅ **It worked when:** logs show `Sidekiq … started`.
+
+> **All 4 services should now be Active.** If a service crashes, check its **Deploy Logs**
+> tab — almost always a missing/wrong env var.
+
+---
+
+## Phase 4 — Create your Chatwoot admin
+
+- [ ] **4.1** Open the `chatwoot-web` generated domain → fill in **Create new account** →
+  this first user is your **Administrator** (the manager).
+- [ ] **4.2** Click your avatar → **Profile Settings → My Profile** → set the language to
+  **Arabic** if you want the dashboard in Arabic (RTL).
+
+✅ **Done when:** you can log in to Chatwoot at the public HTTPS URL.
 
 ---
 
 ## Phase 5 — Connect WhatsApp, Facebook, Instagram
 
-Follow **[docs/meta-setup.md](docs/meta-setup.md)** precisely (it has the exact fields). In short:
+Follow **[docs/meta-setup.md](docs/meta-setup.md)** precisely (it has the exact fields).
+Wherever it says *"Chatwoot's callback URL"*, that URL is on your **chatwoot-web** Railway
+domain.
 
-- [ ] **5.1 WhatsApp:** in Meta App → WhatsApp → get Phone Number ID, WABA ID, a permanent
-  System User token. In Chatwoot → **Inboxes → Add Inbox → WhatsApp → WhatsApp Cloud**,
-  enter them + a verify token. Paste Chatwoot's callback URL + verify token back into Meta
-  and subscribe to `messages`.
-- [ ] **5.2 Facebook:** Chatwoot → **Add Inbox → Facebook** → log in, pick your Page.
-- [ ] **5.3 Instagram:** Chatwoot → **Add Inbox → Instagram** → authorize, pick the account.
+- [ ] **5.1 WhatsApp Cloud:** add the inbox in Chatwoot, paste the callback URL + verify
+  token back into Meta App → WhatsApp → Configuration → Webhook → subscribe to `messages`.
+- [ ] **5.2 Facebook:** Chatwoot → Add Inbox → Facebook → log in, pick the Page.
+- [ ] **5.3 Instagram:** Chatwoot → Add Inbox → Instagram → authorize, pick the account.
 
-✅ **Done when:** you message each channel from a test phone and the message **appears in
-Chatwoot**, and your reply from Chatwoot **arrives on the test phone**.
-
----
-
-## Phase 6 — Create the API token & start the custom services
-
-- [ ] **6.1** In Chatwoot → your **Profile → Access Token** → copy it.
-- [ ] **6.2** Put it in `.env` on the server:
-  ```
-  CHATWOOT_API_ACCESS_TOKEN=<the token>
-  ```
-- [ ] **6.3** Start the AI + scheduler services:
-  ```bash
-  docker compose up -d --build ai-kb-service followup-scheduler
-  docker compose logs -f ai-kb-service     # should say "listening on :4000"
-  ```
-- [ ] **6.4** Check it's reachable: open `https://chat.yourshowroom.com/ai/health` → should
-  return `{"status":"ok"}`.
-
-✅ **Done when:** `/ai/health` returns ok and the logs show both services running.
+✅ **Done when:** a test message to each of the three channels appears in Chatwoot, and your
+reply from Chatwoot lands on the test phone natively.
 
 ---
 
-## Phase 7 — Set up your sections, staff, and rules (in Chatwoot, no code)
+## Phase 6 — Set up sections, employees, and the workflow
 
-Follow **[docs/chatwoot-customizations.md](docs/chatwoot-customizations.md) → "A. Native
-configuration"**. In order:
+This is all in Chatwoot's UI. **No code.**
 
-- [ ] **7.1 Teams = sections:** Settings → Teams → create **Tools, Ceramic, Tile, …** plus a
-  **Triage** team. Enable **auto-assign** on each.
-- [ ] **7.2 Agents:** Settings → Agents → add each employee; add them to their section's
-  **Team** and to the WhatsApp/IG/FB **inboxes**. Make yourself/managers **Administrator**.
-- [ ] **7.3 Sales stage:** Settings → Custom Attributes → Conversation → add `sales_stage`
-  (list: new, contacted, quoted, negotiating, won, lost).
-- [ ] **7.4 Ownership on reply:** Settings → Inbox → enable auto-assignment, or add the
-  "assign to me on reply" automation (see the doc).
-- [ ] **7.5 Canned responses + auto-reply greeting** (Settings → Canned Responses /
-  Automation).
+### 6.1  Sections → Teams
+- **Settings → Teams → Add Team:** create one team per section (`Tools`, `Ceramic`, `Tile`,
+  …) plus a **Triage** team you'll use for the unsorted incoming pool.
+- Enable **Auto-assignment** on each section team (so once you assign a conversation to a
+  team, Chatwoot round-robins it to one of that team's members).
 
-✅ **Done when:** you can assign a test conversation to a section, set its `sales_stage`, and
-the assignee shows who replied.
+### 6.2  Employees → Agents (with "Mine only" access)
+- **Settings → Agents → Add Agent** for each employee. Role = **Agent**.
+- For each employee, **Settings → Inboxes → (each inbox) → Collaborators**: add them as a
+  collaborator on every channel inbox (WhatsApp/IG/FB). Set their access level to
+  **"Conversations assigned to me only"** (the dropdown next to their name).
+- Add each employee to their **section's Team** (Settings → Teams → … → Members).
 
----
+> 🔑 **This is what makes basics work without the patch:** because each employee's access
+> is **"assigned to me only,"** they don't see other conversations even though all WhatsApp
+> messages land in one shared inbox. The trade-off is they also don't see their teammates'
+> assignments. Acceptable for v1.
 
-## Phase 8 — Wire the AI service & load products
+### 6.3  Sales pipeline stage
+- **Settings → Custom Attributes → Conversation → Add:**
+  - Name: `sales_stage`, Type: **List**, options:
+    `new, contacted, quoted, negotiating, won, lost`.
+- It now shows in the right-side panel of every conversation; agents change it as the deal
+  progresses. Your win-rate report is `won` ÷ all closed.
 
-- [ ] **8.1 Webhook:** Chatwoot → Settings → Integrations → **Webhooks** → add
-  `https://chat.yourshowroom.com/ai/webhooks/chatwoot?token=YOUR_CHATWOOT_WEBHOOK_SECRET`
-  and subscribe to **Conversation Created** and **Message Created**.
-- [ ] **8.2 Copilot sidebar:** Settings → Integrations → **Dashboard Apps** → add
-  `https://chat.yourshowroom.com/ai/sidebar.html`. It appears as a tab inside conversations.
-- [ ] **8.3 Find your team IDs** (needed for ad routing). Easiest:
-  ```bash
-  curl -s https://chat.yourshowroom.com/api/v1/accounts/1/teams \
-    -H "api_access_token: YOUR_CHATWOOT_API_ACCESS_TOKEN"
-  ```
-  Note the `id` for each section (e.g. Ceramic = 3).
-- [ ] **8.4 Add ad→section rules** so ad messages auto-route. Example (Ceramic = team 3):
-  ```bash
-  curl -X POST https://chat.yourshowroom.com/ai/admin/ad-routing \
-    -H "x-admin-token: YOUR_AI_KB_ADMIN_TOKEN" -H "Content-Type: application/json" \
-    -d '{"match_type":"ad_id","match_value":"PASTE_META_AD_ID","team_id":3,"section":"ceramic"}'
-  ```
-  *(Tip: name your Meta campaigns with the section, then use `match_type":"campaign_regex"`
-  with `"match_value":"ceramic|سيراميك"` to route by name instead of per-ad.)*
-- [ ] **8.5 Load a few products** to test the knowledge base:
-  ```bash
-  curl -X POST https://chat.yourshowroom.com/ai/products \
-    -H "x-admin-token: YOUR_AI_KB_ADMIN_TOKEN" -H "Content-Type: application/json" \
-    -d '{"section":"ceramic","name":"White Glazed Wall Tile 30x60","sku":"CER-3060-W",
-         "price":12.5,"currency":"USD","in_stock":true,
-         "specs":{"size":"30x60cm","finish":"glossy"},
-         "description":"بلاط حائط سيراميك أبيض لامع 30×60 — White glossy ceramic wall tile."}'
-  ```
+### 6.4  Ownership on reply
+- **Settings → Inboxes → (each inbox) → Configuration → Auto assignment:** turn ON. When an
+  unassigned message gets a team assigned, Chatwoot picks an available member; the assignee
+  is shown on every conversation as "followed up by X."
 
-✅ **Done when:** sending a product question to a test conversation makes a 🤖 **draft note**
-appear, and the Copilot sidebar's product search returns your product.
+### 6.5  Auto-reply greeting & canned responses
+- **Settings → Inboxes → (each inbox) → Configuration → Greeting message:** turn ON and
+  write your bilingual greeting.
+- **Settings → Canned Responses → Add:** one per section (e.g. `/price-ceramic`,
+  `/hours`, `/visit`). Agents type the shortcut and Chatwoot expands it.
 
----
+### 6.6  The triage workflow you (the manager) will use
+1. New customer message arrives in Chatwoot (you can see all of them as Administrator).
+2. You read it, **assign the conversation to the section's team** — Chatwoot auto-assigns
+   to an available employee in that team.
+3. The employee gets the conversation in their "Mine" view and handles it.
+4. They update the `sales_stage` as the deal progresses, label, etc.
 
-## Phase 9 — The two developer patches (section isolation + ad capture)
+> **Optional automation rule for ads now (no patch needed):** if you're disciplined about
+> naming Meta campaigns (e.g. always include the section name in the campaign name), you
+> can sometimes match on the message body or referral text via a Chatwoot **Automation
+> Rule** — *Event: Conversation Created → Condition: Content contains "ceramic" → Action:
+> Assign team Ceramic*. It's hit-or-miss for ads (Meta's ad metadata isn't on the
+> conversation until patch B2 lands), but it's free to try.
 
-This is the only part that needs editing Chatwoot's source. Follow
-**[docs/chatwoot-customizations.md](docs/chatwoot-customizations.md) → "B. Fork patches"**.
-If you have a developer, hand them that doc. High level:
-
-- [ ] **9.1** Clone the Chatwoot fork and check out the matching version:
-  ```bash
-  git clone https://github.com/chatwoot/chatwoot.git
-  cd chatwoot && git checkout v4.0.0
-  ```
-- [ ] **9.2 Patch B1 — team-scoped visibility** (employees see only their section), across
-  list, **search**, filters, and reports.
-- [ ] **9.3 Patch B2 — ad-referral capture** (store the ad id on the conversation).
-- [ ] **9.4** Point `docker-compose.yml` `chatwoot` + `chatwoot-sidekiq` at
-  `build: ./chatwoot`, then:
-  ```bash
-  docker compose up -d --build chatwoot chatwoot-sidekiq
-  ```
-
-> 🔔 **Tell me when you reach this step** — I can write the actual patch files against the
-> cloned fork for you.
-
-✅ **Done when:** logged in as a Tools employee you **cannot** see Ceramic conversations
-(list/search/filter), and an ad message lands in the correct section automatically.
+✅ **Done when:** you assign a test conversation to Ceramic, the Ceramic employee sees it in
+their "Mine" view, they reply (customer gets it on WhatsApp/IG/FB), they set
+`sales_stage = won`, and the conversation shows them as assignee.
 
 ---
 
-## Phase 10 — Final end-to-end test
+## Phase 7 — Verify
 
-Run the checklist in the plan's **Verification** section
-(`C:\Users\baraa\.claude\plans\i-have-a-showroom-precious-squirrel.md`):
+- [ ] Send test messages from a real phone to each of the three channels → all three appear
+      in Chatwoot.
+- [ ] Reply from Chatwoot in Arabic → customer receives it natively in their app.
+- [ ] As manager, assign a conversation to a section team → the employee sees it in **Mine**,
+      another section's employee does **not**.
+- [ ] Walk a conversation through `new → contacted → quoted → won`.
+- [ ] Open **Reports → Overview / Agent / Team / Label** and confirm numbers populate.
 
-- [ ] Messages from all 3 channels arrive and replies go back natively.
-- [ ] Ad message auto-routes to its section; direct message lands in Triage.
-- [ ] Employees see only their section (incl. search/filters); manager sees all.
-- [ ] Reply sets the owner; `sales_stage` can be moved to `won`.
-- [ ] AI draft note appears and is only sent when the employee sends it; Arabic works.
-- [ ] An idle conversation gets a follow-up (template after 24h); replying stops it.
-- [ ] Manager reports show per-employee, per-section, and showroom numbers.
-
----
-
-## Quick reference — daily/ops commands (on the server)
-
-```bash
-docker compose ps                      # what's running
-docker compose logs -f ai-kb-service   # tail a service
-docker compose up -d --build SERVICE   # rebuild & restart one service after changes
-docker compose down                    # stop everything (data is kept in volumes)
-docker compose pull && docker compose up -d   # update images
-```
+When all six tick: **the showroom can go live on this system.**
 
 ---
 
-### The shortest path if you want help
+## Daily Railway ops
 
-You can do Phases 1–8 yourself with the docs. The two things I can do **for** you right now
-without server access are: **(a)** write the Phase 9 Chatwoot patch files, and **(b)** build a
-small web admin page for managing products/ad-rules instead of using `curl`. Tell me which
-and I'll start.
+- **Read logs:** Railway → service → **Deployments → View Logs**.
+- **Restart a service:** Railway → service → **⋯ → Restart**.
+- **Update Chatwoot version:** change the image tag in `chatwoot-web` and `chatwoot-sidekiq`
+  to a newer release, **Deploy**. (Read Chatwoot's release notes first.)
+- **Cost:** Chatwoot Web + Sidekiq dominate RAM. Tune **Settings → Memory Limit** if needed.
+
+---
+
+## Upgrades (when you're ready — pick any, in any order)
+
+Each is independent. None requires throwing away your basics setup.
+
+### 🅐  Section-shared visibility (Chatwoot fork patch **B1**)
+**What you get:** an employee sees **every** conversation in their section (teammates'
+included), not just their own — useful so people can cover each other. See
+[docs/chatwoot-customizations.md](docs/chatwoot-customizations.md) → "B1".
+
+### 🅑  Ad → section auto-routing (Chatwoot fork patch **B2** + Chatwoot automation rule)
+**What you get:** Click-to-WhatsApp / Click-to-Messenger / Instagram-ads messages
+automatically land in the right section. Manager only triages direct (non-ad) messages.
+See [docs/chatwoot-customizations.md](docs/chatwoot-customizations.md) → "B2".
+
+### 🅒  AI-drafted replies + product knowledge base + Copilot sidebar
+**What you get:** Claude reads the conversation + your product catalog and drops a draft
+reply into the conversation as a private note; the employee reviews/edits/sends. Plus an
+in-chat product lookup sidebar. The whole service is scaffolded in
+[services/ai-kb-service/](services/ai-kb-service/) — add it as two more Railway services
+(a custom `pgvector/pgvector:pg16` for embeddings + `ai-kb-service` from this repo) and add
+the Anthropic + Voyage API keys.
+
+### 🅓  Auto follow-ups for silent customers
+**What you get:** if you replied and the customer went quiet for >24h, the system sends a
+nudge (free text inside the WhatsApp 24h window, an approved template after). Scaffolded in
+[services/followup-scheduler/](services/followup-scheduler/) — add it as one Railway
+service.
+
+---
+
+### What I can do for you right now
+
+You drive Phases 1–7 yourself with this runbook + the docs. Without server access, the
+useful thing I can do is **write the actual Chatwoot fork patch files (B1 + B2) so when you
+want upgrade 🅐 or 🅑 it's just a `git push` away**. Want me to start that?
